@@ -146,7 +146,11 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({ results, onReset }) => 
   };
 
   // Safe Reduce for Busiest Hour
-  const peakHour = stats.hourlyData.reduce((max, curr) => curr.count > max.count ? curr : max, { count: -1, label: '0', hour: 0 });
+  // Explicitly typing the accumulator to prevent 'unknown' type inference error
+  const peakHour = stats.hourlyData.reduce(
+    (max: { count: number; label: string; hour: number }, curr) => curr.count > max.count ? curr : max, 
+    { count: -1, label: '0', hour: 0 }
+  );
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
