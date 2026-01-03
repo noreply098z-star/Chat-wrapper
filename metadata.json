@@ -1,0 +1,5 @@
+{
+  "name": "ChatMetric",
+  "description": "A privacy-focused tool to analyze HTML chat exports. Count messages and visualize sender statistics without sending data to any server.",
+  "requestFramePermissions": []
+}
