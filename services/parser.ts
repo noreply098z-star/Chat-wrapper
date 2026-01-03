@@ -6,16 +6,21 @@ const COLORS = [
 ];
 
 const STOP_WORDS = new Set([
-  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us', 'is', 'are', 'was', 'were', 'had', 'has', 'sent', 'attachment', 'message', 'chat', 'pm', 'am', 'om', 'ok', 'okay', 'lol', 'yeah', 'yes', 'no', 'attachment.', 'you', 'to'
+  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us', 'is', 'are', 'was', 'were', 'had', 'has', 'sent', 'attachment', 'message', 'chat', 'pm', 'am', 'om', 'ok', 'okay', 'lol', 'yeah', 'yes', 'no', 'attachment.', 'to'
 ]);
 
 // Basic Regex for generic emoji detection
 const EMOJI_REGEX = /\p{Emoji_Presentation}/gu;
 
+// Regex for Meta/FB standard date format: "May 19, 2023, 8:41 PM"
+// Note: Some locales might use DD/MM/YYYY but standard export is typically US-like or explicit.
+// We look for: MonthName DD, YYYY, H:MM AM/PM
+const META_DATE_REGEX = /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s\d{1,2},\s\d{4},?\s\d{1,2}:\d{2}\s(?:AM|PM)$/i;
+
 const isValidSender = (text: string): boolean => {
   if (!text) return false;
   const t = text.trim();
-  if (t.length === 0 || t.length > 50) return false;
+  if (t.length === 0 || t.length > 80) return false; // Increased max length slightly
   if (/^\d{1,2}:\d{2}/.test(t)) return false; 
   if (/^(AM|PM)$/i.test(t)) return false;     
   if (/^[A-Z][a-z]{2}\s\d{1,2},?\s\d{4}/.test(t)) return false; 
@@ -25,11 +30,13 @@ const isValidSender = (text: string): boolean => {
       'sent', 'seen', 'liked', 'reacted', 'reply', 'replied', 
       'message', 'chat', 'conversation', 'participants', 
       'search', 'loading', 'active', 'now', 'edited', 
-      'unsent', 'forwarded', 'you', 'admin',
+      'unsent', 'forwarded', 'admin',
       'you sent an attachment.', 'sent an attachment.', 
       'attachment', 'video chat', 'audio call', 
       'missed voice call', 'missed video call'
   ]);
+  
+  // Removed 'you' from invalid list as some exports might use it, though usually it's a full name.
   
   if (commonLabels.has(t.toLowerCase())) return false;
   if (t.toLowerCase().includes('sent an attachment')) return false;
@@ -58,25 +65,49 @@ export const parseChatFile = async (file: File): Promise<ChatAnalysisResult> => 
         const parser = new DOMParser();
         const doc = parser.parseFromString(text, 'text/html');
         
-        // Pass 1: Extraction
         const rawMessages: RawMessage[] = [];
         let detectedFormat = 'Unknown';
 
-        // --- STRATEGY 1: Meta/Instagram/Facebook (.pam) ---
-        const pamElements = doc.querySelectorAll('.pam');
+        // --- STRATEGY 1: Meta/Instagram/Facebook (Class-based) ---
+        // Look for standard container classes
+        const pamElements = doc.querySelectorAll('.pam, ._3-96, ._a6-g');
+        
         if (pamElements.length > 0) {
-            detectedFormat = 'Instagram/Meta Export';
+            detectedFormat = 'Meta/Instagram Export (Class)';
             pamElements.forEach((el) => {
-                const header = el.querySelector('h2, h3, h4') || el.querySelector('._2lem, ._27_v');
+                // Try multiple selectors for internal parts
+                const header = el.querySelector('h2, h3, h4, ._2lem, ._27_v, ._a6-h');
                 const name = header?.textContent?.trim();
-                const timeDiv = el.querySelector('._3-94, ._a6-o');
-                const date = extractDate(timeDiv?.textContent || '');
-                const contentDiv = el.querySelector('div._a6-p') || el.querySelector('div.message');
-                let content = contentDiv?.textContent || "";
                 
+                const timeDiv = el.querySelector('._3-94, ._a6-o, ._a72d');
+                const dateStr = timeDiv?.textContent || '';
+                const date = extractDate(dateStr);
+                
+                const contentDiv = el.querySelector('div._a6-p, div.message, div._3-96, div._2let') || el.lastElementChild;
+                // Exclude header/time from content if selector matches parent
+                let content = "";
+                
+                // If we grabbed the parent as content, try to find text nodes not in header/time
+                if (contentDiv === el || contentDiv?.contains(header)) {
+                    // Fallback to text content of the whole element minus the header/time text?
+                    // This is tricky. Let's look for specific content classes first.
+                    const distinctContent = el.querySelector('div._2let, div._a6-p');
+                    if (distinctContent) content = distinctContent.textContent || "";
+                } else {
+                    content = contentDiv?.textContent || "";
+                }
+
+                // If content is empty, maybe it's just text inside the PAM div?
+                if (!content && el.childNodes.length > 0) {
+                     // Heuristic: Last div is often content
+                     const divs = el.querySelectorAll('div');
+                     if (divs.length > 0) content = divs[divs.length - 1].textContent || "";
+                }
+
                 let type: RawMessage['type'] = 'text';
                 const lowerText = content.toLowerCase();
-                const links = contentDiv?.querySelectorAll('a');
+                // Check if links exist in the container
+                const links = el.querySelectorAll('a');
                 
                 if (lowerText.includes('sent an attachment') || lowerText.includes('sent a photo')) {
                     type = 'attachment';
@@ -93,7 +124,88 @@ export const parseChatFile = async (file: File): Promise<ChatAnalysisResult> => 
             });
         }
 
-        // --- STRATEGY 2: Telegram ---
+        // --- STRATEGY 2: Meta/Instagram/Facebook (Heuristic / Fallback) ---
+        // If Strategy 1 failed (or even if it didn't, we can try to find more if count is 0), 
+        // scan for Date-like strings and deduce messages.
+        if (rawMessages.length === 0) {
+            const allDivs = doc.querySelectorAll('div');
+            // We iterate all divs to find timestamps. This is heavier but robust.
+            // Optimization: checking textContent length before regex
+            
+            for (let i = 0; i < allDivs.length; i++) {
+                const div = allDivs[i];
+                const text = div.textContent?.trim();
+                
+                if (text && text.length < 50 && META_DATE_REGEX.test(text)) {
+                    // Found a timestamp candidate!
+                    const date = extractDate(text);
+                    if (!date) continue;
+
+                    // The sender is usually a sibling BEFORE the timestamp, or a cousin.
+                    // Common Structure A: 
+                    // <div Container> 
+                    //    <div Sender>Name</div> 
+                    //    <div Content>Msg</div> 
+                    //    <div Date>Date</div> 
+                    // </div>
+                    
+                    // Common Structure B:
+                    // <div Container>
+                    //    <div Header> <div Sender>Name</div> <div Date>Date</div> </div>
+                    //    <div Content>Msg</div>
+                    // </div>
+
+                    let sender = "";
+                    let content = "";
+                    let type: RawMessage['type'] = 'text';
+
+                    // Heuristic: Look at siblings
+                    const parent = div.parentElement;
+                    if (parent) {
+                        // Case: Date is inside the header row?
+                        // Try to find Sender in previous siblings
+                        let prev = div.previousElementSibling;
+                        while(prev) {
+                            if (prev.textContent && isValidSender(prev.textContent)) {
+                                sender = prev.textContent.trim();
+                                break;
+                            }
+                            prev = prev.previousElementSibling;
+                        }
+
+                        // If not found, look at parent's previous sibling (Structure B)
+                        if (!sender && parent.previousElementSibling) {
+                             const pPrev = parent.previousElementSibling;
+                             if (pPrev.textContent && isValidSender(pPrev.textContent)) {
+                                 sender = pPrev.textContent.trim();
+                             }
+                        }
+
+                        // Content: Usually next sibling of Date, or next sibling of Header
+                        let next = div.nextElementSibling;
+                        if (next) {
+                            content = next.textContent || "";
+                        } else {
+                            // If date is last, maybe content is the previous sibling (if sender was found way up)?
+                            // Or content is parent's next sibling?
+                            if (parent.nextElementSibling) {
+                                content = parent.nextElementSibling.textContent || "";
+                            }
+                        }
+                    }
+
+                    if (sender && date) {
+                        detectedFormat = 'Meta/Instagram Export (Heuristic)';
+                        // Check for attachments
+                        if (content.toLowerCase().includes('sent an attachment')) type = 'attachment';
+                        
+                        rawMessages.push({ sender, timestamp: date, content, type });
+                    }
+                }
+            }
+        }
+
+        // --- STRATEGY 3: Telegram ---
         if (rawMessages.length === 0) {
             const telegramMessages = doc.querySelectorAll('.message');
             if (telegramMessages.length > 0) {
