@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { ChatAnalysisResult } from '../types';
 import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, LineChart, Line
+  ResponsiveContainer, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area
 } from 'recharts';
 import { 
-  MessageSquare, Users, Zap, Clock, Calendar, 
-  Smile, Film, Image as ImageIcon, MessageCircle, Moon, Sun, 
+  Users, Zap, Clock, Calendar, 
+  Smile, Film, MessageCircle, Moon, Sun, 
   Activity, Award, HeartHandshake, TrendingUp, History
 } from 'lucide-react';
 
@@ -24,7 +24,6 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({ results, onReset }) => 
     if (results.length === 0) return null;
     
     // Base aggregation
-    const main = results[0]; // Take metadata from first
     const totalMessages = results.reduce((acc, r) => acc + r.totalMessages, 0);
     
     // Merge Senders
@@ -145,6 +144,9 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({ results, onReset }) => 
       if (max === eveningMessages) return 'Evening Relaxer';
       return 'Night Owl';
   };
+
+  // Safe Reduce for Busiest Hour
+  const peakHour = stats.hourlyData.reduce((max, curr) => curr.count > max.count ? curr : max, { count: -1, label: '0', hour: 0 });
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
@@ -305,7 +307,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({ results, onReset }) => 
                <div className="mt-8 pt-6 border-t border-white/10">
                    <div className="text-xs text-slate-400 mb-1">Most Active Time</div>
                    <div className="text-2xl font-bold">
-                       {stats.hourlyData.reduce((p:any, c:any) => c.count > p.count ? c : p).label}:00
+                       {peakHour.label}:00
                    </div>
                </div>
           </div>

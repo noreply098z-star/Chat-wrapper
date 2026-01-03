@@ -164,9 +164,7 @@ export const parseChatFile = async (file: File): Promise<ChatAnalysisResult> => 
 
         // Analysis Loop
         let previousMsg: RawMessage | null = null;
-        let currentDayStreak = 0;
         let maxDayStreak = 0;
-        let lastDayStr = '';
 
         rawMessages.forEach((msg) => {
             const sender = getSender(msg.sender);

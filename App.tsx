@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { parseChatFile } from './services/parser';
 import FileUploader from './components/FileUploader';
 import StatsDashboard from './components/StatsDashboard';
